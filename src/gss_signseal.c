@@ -121,6 +121,7 @@ uint32_t gssntlm_wrap(uint32_t *minor_status,
     struct ntlm_buffer output;
     struct ntlm_buffer signature;
     uint32_t retmaj, retmin;
+    bool signonly = false;
 
     ctx = (struct gssntlm_ctx *)context_handle;
     retmaj = gssntlm_context_is_valid(ctx, NULL);
@@ -137,10 +138,10 @@ uint32_t gssntlm_wrap(uint32_t *minor_status,
         *conf_state = 0;
     }
 
-    if (conf_req_flag == 0) {
-        /* ignore, always seal */
+    if ((conf_req_flag == 0) ||
+        ((ctx->neg_flags & NTLMSSP_NEGOTIATE_SEAL) == 0)) {
+        signonly = true;
     }
-
     output_message_buffer->length =
         input_message_buffer->length + NTLM_SIGNATURE_SIZE;
     output_message_buffer->value = malloc(output_message_buffer->length);
@@ -152,10 +153,22 @@ uint32_t gssntlm_wrap(uint32_t *minor_status,
     message.length = input_message_buffer->length;
     signature.data = output_message_buffer->value;
     signature.length = NTLM_SIGNATURE_SIZE;
-    output.data = (uint8_t *)output_message_buffer->value + NTLM_SIGNATURE_SIZE;
-    output.length = input_message_buffer->length;
-    retmin = ntlm_seal(ctx->neg_flags, &ctx->crypto_state,
-                       &message, &output, &signature);
+    if (signonly) {
+        memcpy((uint8_t *)output_message_buffer->value + NTLM_SIGNATURE_SIZE,
+               input_message_buffer->value, input_message_buffer->length);
+        retmin = ntlm_sign(ctx->neg_flags, NTLM_SEND,
+                           &ctx->crypto_state,
+                           &message, &signature);
+    } else {
+        output.data = (uint8_t *)output_message_buffer->value
+                                                        + NTLM_SIGNATURE_SIZE;
+        output.length = input_message_buffer->length;
+        retmin = ntlm_seal(ctx->neg_flags, &ctx->crypto_state,
+                           &message, &output, &signature);
+        if (conf_state && (retmin == 0)) {
+            *conf_state = 1;
+        }
+    }
     if (retmin) {
         safefree(output_message_buffer->value);
         return GSSERRS(retmin, GSS_S_FAILURE);
@@ -177,6 +190,7 @@ uint32_t gssntlm_unwrap(uint32_t *minor_status,
     uint8_t sig[16];
     struct ntlm_buffer signature = { sig, NTLM_SIGNATURE_SIZE };
     uint32_t retmaj, retmin;
+    bool signonly = false;
 
     ctx = (struct gssntlm_ctx *)context_handle;
     retmaj = gssntlm_context_is_valid(ctx, NULL);
@@ -204,17 +218,53 @@ uint32_t gssntlm_unwrap(uint32_t *minor_status,
     message.length = input_message_buffer->length - NTLM_SIGNATURE_SIZE;
     output.data = output_message_buffer->value;
     output.length = output_message_buffer->length;
-    retmin = ntlm_unseal(ctx->neg_flags, &ctx->crypto_state,
-                         &message, &output, &signature);
-    if (retmin) {
-        safefree(output_message_buffer->value);
-        return GSSERRS(retmin, GSS_S_FAILURE);
+
+    if (ctx->neg_flags & NTLMSSP_NEGOTIATE_SEAL) {
+        struct ntlm_signseal_state saved_state;
+        /* Save the crypto state so we can rewind it to test if only signing
+         * was employed. This relies on the fact crypto_state contains no
+         * pointers or other hidden state */
+        saved_state = ctx->crypto_state;
+
+        /* Let's be "optimistic" and assume sealing was used */
+        retmin = ntlm_unseal(ctx->neg_flags, &ctx->crypto_state,
+                             &message, &output, &signature);
+        if (retmin) {
+            safezero(&saved_state, sizeof(struct ntlm_signseal_state));
+            safefree(output_message_buffer->value);
+            return GSSERRS(retmin, GSS_S_FAILURE);
+        }
+
+        if (memcmp(input_message_buffer->value,
+                   signature.data, NTLM_SIGNATURE_SIZE) == 0) {
+            safezero(&saved_state, sizeof(struct ntlm_signseal_state));
+            if (conf_state) *conf_state = 1;
+            return GSSERRS(0, GSS_S_COMPLETE);
+        }
+
+        /* Unseal failed, let's see if this was signed but not encrypted */
+        ctx->crypto_state = saved_state;
+        safezero(&saved_state, sizeof(struct ntlm_signseal_state));
+        signonly = true;
+    } else {
+        signonly = true;
     }
 
-    if (memcmp(input_message_buffer->value,
-               signature.data, NTLM_SIGNATURE_SIZE) != 0) {
-        safefree(output_message_buffer->value);
-        return GSSERRS(0, GSS_S_BAD_SIG);
+    if (signonly) {
+        memcpy(output_message_buffer->value, message.data, message.length);
+
+        retmin = ntlm_sign(ctx->neg_flags, NTLM_RECV, &ctx->crypto_state,
+                       &message, &signature);
+        if (retmin) {
+            safefree(output_message_buffer->value);
+            return GSSERRS(retmin, GSS_S_FAILURE);
+        }
+
+        if (memcmp(input_message_buffer->value,
+                   signature.data, NTLM_SIGNATURE_SIZE) != 0) {
+            safefree(output_message_buffer->value);
+            return GSSERRS(0, GSS_S_BAD_SIG);
+        }
     }
 
     return GSSERRS(0, GSS_S_COMPLETE);

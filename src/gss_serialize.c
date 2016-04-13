@@ -223,17 +223,12 @@ static int export_keys(struct export_state *state,
         exp_keys->seal_key.len = 0;
     }
 
-    if (keys->seal_handle) {
-        ret = RC4_EXPORT(keys->seal_handle, &out);
-        if (ret) return ret;
-        ret = export_data_buffer(state, buf, sizeof(buf),
-                                 &exp_keys->rc4_state);
-        safezero(buf, sizeof(buf));
-        if (ret) return ret;
-    } else {
-        exp_keys->rc4_state.ptr = 0;
-        exp_keys->rc4_state.len = 0;
-    }
+    ret = RC4_EXPORT(&keys->seal_handle, &out);
+    if (ret) return ret;
+    ret = export_data_buffer(state, buf, sizeof(buf),
+                             &exp_keys->rc4_state);
+    safezero(buf, sizeof(buf));
+    if (ret) return ret;
 
     exp_keys->seq_num = htole32(keys->seq_num);
 
@@ -579,20 +574,16 @@ static uint32_t import_keys(uint32_t *minor_status,
         memset(&imp_keys->seal_key, 0, sizeof(struct ntlm_key));
     }
 
-    if (keys->rc4_state.len > 0) {
-        retmaj = import_data_buffer(&retmin, state,
-                                 &in.data, &in.length, true,
-                                 &keys->rc4_state, false);
-        if (retmaj != GSS_S_COMPLETE) goto done;
-        ret = RC4_IMPORT(&imp_keys->seal_handle, &in);
-        safezero(in.data, in.length);
-        safefree(in.data);
-        if (ret) {
-            set_GSSERR(ret);
-            goto done;
-        }
-    } else {
-        imp_keys->seal_handle = NULL;
+    retmaj = import_data_buffer(&retmin, state,
+                             &in.data, &in.length, true,
+                             &keys->rc4_state, false);
+    if (retmaj != GSS_S_COMPLETE) goto done;
+    ret = RC4_IMPORT(&imp_keys->seal_handle, &in);
+    safezero(in.data, in.length);
+    safefree(in.data);
+    if (ret) {
+        set_GSSERR(ret);
+        goto done;
     }
 
     imp_keys->seq_num = le32toh(keys->seq_num);

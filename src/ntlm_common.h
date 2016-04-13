@@ -61,7 +61,7 @@ enum ntlm_err_code {
 #define discard_const(ptr) ((void *)((uintptr_t)(ptr)))
 #define safefree(x) do { free(x); x = NULL; } while(0)
 #define safezero(x, s) do { \
-    volatile uint8_t *p = (x); \
+    volatile uint8_t *p = (uint8_t *)(x); \
     size_t size = (s); \
     while (size--) { *p++ = 0; } \
 } while(0)
