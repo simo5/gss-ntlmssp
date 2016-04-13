@@ -602,9 +602,9 @@ int ntlm_verify_nt_response(struct ntlm_buffer *nt_response,
                                    &expected_response);
     if (ret) return ret;
 
-    ret = EINVAL;
-    if (memcmp(nt_response->data, expected_response.data, 24) == 0) {
-        ret = 0;
+    safecmp(nt_response->data, expected_response.data, 24, ret);
+    if (ret != 0) {
+        ret = EINVAL;
     }
 
     return ret;
@@ -623,9 +623,9 @@ int ntlm_verify_lm_response(struct ntlm_buffer *lm_response,
                                    &expected_response);
     if (ret) return ret;
 
-    ret = EINVAL;
-    if (memcmp(lm_response->data, expected_response.data, 24) == 0) {
-        ret = 0;
+    safecmp(lm_response->data, expected_response.data, 24, ret);
+    if (ret != 0) {
+        ret = EINVAL;
     }
 
     return ret;
@@ -656,9 +656,9 @@ int ntlmv2_verify_nt_response(struct ntlm_buffer *nt_response,
 
     if (ret) goto done;
 
-    ret = EINVAL;
-    if (memcmp(nt_resp->v2.resp, proof, 16) == 0) {
-        ret = 0;
+    safecmp(nt_resp->v2.resp, proof, 16, ret);
+    if (ret != 0) {
+        ret = EINVAL;
     }
 
 done:
@@ -689,7 +689,8 @@ int ntlmv2_verify_lm_response(struct ntlm_buffer *lm_response,
 
     if (ret) return ret;
 
-    if (memcmp(lm_resp->v2.resp, proof, 16) == 0) return 0;
+    safecmp(lm_resp->v2.resp, proof, 16, ret);
+    if (ret == 0) return 0;
 
     return EINVAL;
 }
@@ -958,7 +959,8 @@ int ntlm_verify_mic(struct ntlm_key *key,
                         authenticate_message, &check_mic);
     if (ret) return ret;
 
-    if (memcmp(mic->data, check_mic.data, NTLM_SIGNATURE_SIZE) != 0) {
+    safecmp(mic->data, check_mic.data, NTLM_SIGNATURE_SIZE, ret);
+    if (ret != 0) {
         return EACCES;
     }
 
@@ -1004,7 +1006,8 @@ int ntlm_verify_channel_bindings(struct ntlm_buffer *unhashed,
     ret = ntlm_hash_channel_bindings(unhashed, &cb);
     if (ret) return ret;
 
-    if (memcmp(cb.data, signature->data, 16) != 0) return EACCES;
+    safecmp(cb.data, signature->data, 16, ret);
+    if (ret != 0) return EACCES;
 
     return 0;
 }

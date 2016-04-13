@@ -65,7 +65,12 @@ enum ntlm_err_code {
     size_t size = (s); \
     while (size--) { *p++ = 0; } \
 } while(0)
-
+#define safecmp(x, y, s, r) do { \
+    (r) = 0; \
+    for (int _i_i = 0; _i_i < (s); _i_i++) { \
+        (r) += ((uint8_t *)(x))[_i_i] ^ ((uint8_t *)(y))[_i_i]; \
+    } \
+} while(0)
 
 struct ntlm_buffer {
     uint8_t *data;
