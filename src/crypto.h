@@ -84,13 +84,11 @@ int MD5_HASH(struct ntlm_buffer *payload,
  *
  * @param rc4_key   The encryption/decryption key
  * @param mode      The cipher mode
- * @param state     Allocated ntlm_rc4_state structure
- *
- * @return 0 on success or error
+ * @param state     Preallocated ntlm_rc4_state structure
  */
-int RC4_INIT(struct ntlm_buffer *rc4_key,
-             enum ntlm_cipher_mode mode,
-             struct ntlm_rc4_handle **handle);
+void RC4_INIT(struct ntlm_buffer *rc4_key,
+              enum ntlm_cipher_mode mode,
+              struct ntlm_rc4_handle *handle);
 
 
 /**
@@ -106,11 +104,11 @@ int RC4_UPDATE(struct ntlm_rc4_handle *handle,
                struct ntlm_buffer *in, struct ntlm_buffer *out);
 
 /**
- * @brief           Release an rc4 handle
+ * @brief           Wipe an rc4 handle
  *
  * @param state     A pointer to the rc4 handle
  */
-void RC4_FREE(struct ntlm_rc4_handle **handle);
+void RC4_FREE(struct ntlm_rc4_handle *handle);
 
 /**
  * @brief Exports the RC4 state
@@ -130,7 +128,7 @@ int RC4_EXPORT(struct ntlm_rc4_handle *handle, struct ntlm_buffer *out);
  *
  * @return 0 on success or EINVAL if the buffer is not an exported state
  */
-int RC4_IMPORT(struct ntlm_rc4_handle **handle, struct ntlm_buffer *in);
+int RC4_IMPORT(struct ntlm_rc4_handle *handle, struct ntlm_buffer *in);
 
 /**
  * @brief RC4 encryption/decryption all in one

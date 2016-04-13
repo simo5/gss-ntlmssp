@@ -130,7 +130,7 @@ struct ntlm_key {
 struct ntlm_signseal_handle {
     struct ntlm_key sign_key;
     struct ntlm_key seal_key;
-    struct ntlm_rc4_handle *seal_handle;
+    struct ntlm_rc4_handle seal_handle;
     uint32_t seq_num;
 };
 

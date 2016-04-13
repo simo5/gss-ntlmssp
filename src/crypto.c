@@ -19,7 +19,6 @@
 #include <string.h>
 
 #include <openssl/des.h>
-#include <openssl/rc4.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
@@ -137,23 +136,11 @@ int MD5_HASH(struct ntlm_buffer *payload,
     return mdx_hash(EVP_md5(), payload, result);
 }
 
-struct ntlm_rc4_handle {
-    RC4_KEY key;
-};
-
-int RC4_INIT(struct ntlm_buffer *rc4_key,
-             enum ntlm_cipher_mode mode,
-             struct ntlm_rc4_handle **out)
+void RC4_INIT(struct ntlm_buffer *rc4_key,
+              enum ntlm_cipher_mode mode,
+              struct ntlm_rc4_handle *handle)
 {
-    struct ntlm_rc4_handle *handle;
-
-    handle = malloc(sizeof(struct ntlm_rc4_handle));
-    if (!handle) return ENOMEM;
-
     RC4_set_key(&handle->key, rc4_key->length, rc4_key->data);
-
-    *out = handle;
-    return 0;
 }
 
 int RC4_UPDATE(struct ntlm_rc4_handle *handle,
@@ -169,11 +156,9 @@ int RC4_UPDATE(struct ntlm_rc4_handle *handle,
     return 0;
 }
 
-void RC4_FREE(struct ntlm_rc4_handle **handle)
+void RC4_FREE(struct ntlm_rc4_handle *handle)
 {
-    if (!handle || !*handle) return;
-    safezero((uint8_t *)(&((*handle)->key)), sizeof(RC4_KEY));
-    safefree(*handle);
+    safezero((uint8_t *)(&handle->key), sizeof(RC4_KEY));
 }
 
 int RC4_EXPORT(struct ntlm_rc4_handle *handle, struct ntlm_buffer *out)
@@ -190,22 +175,17 @@ int RC4_EXPORT(struct ntlm_rc4_handle *handle, struct ntlm_buffer *out)
     return 0;
 }
 
-int RC4_IMPORT(struct ntlm_rc4_handle **_handle, struct ntlm_buffer *in)
+int RC4_IMPORT(struct ntlm_rc4_handle *handle, struct ntlm_buffer *in)
 {
-    struct ntlm_rc4_handle *handle;
     RC4_INT *data = (RC4_INT *)in->data;
     int len = 258 * sizeof(RC4_INT);
 
     if (in->length != len) return EINVAL;
 
-    handle = malloc(sizeof(struct ntlm_rc4_handle));
-    if (!handle) return ENOMEM;
-
     handle->key.x = data[0];
     handle->key.y = data[1];
     memcpy(handle->key.data, &data[2], sizeof(RC4_INT) * 256);
 
-    *_handle = handle;
     return 0;
 }
 
@@ -214,15 +194,14 @@ int RC4K(struct ntlm_buffer *key,
          struct ntlm_buffer *payload,
          struct ntlm_buffer *result)
 {
-    struct ntlm_rc4_handle *handle;
+    struct ntlm_rc4_handle handle;
     int ret;
 
     if (result->length < payload->length) return EINVAL;
 
-    ret = RC4_INIT(key, mode, &handle);
-    if (ret) return ret;
+    RC4_INIT(key, mode, &handle);
 
-    ret = RC4_UPDATE(handle, payload, result);
+    ret = RC4_UPDATE(&handle, payload, result);
 
     RC4_FREE(&handle);
     return ret;
