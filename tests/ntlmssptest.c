@@ -1472,6 +1472,7 @@ int test_gssapi_1(bool user_env_file, bool use_cb, bool no_seal)
     struct gss_channel_bindings_struct cbts = { 0 };
     gss_channel_bindings_t cbt = GSS_C_NO_CHANNEL_BINDINGS;
     uint32_t req_flags;
+    int conf_state;
     int ret;
 
     setenv("NTLM_USER_FILE", TEST_USER_FILE, 0);
@@ -1700,19 +1701,69 @@ int test_gssapi_1(bool user_env_file, bool use_cb, bool no_seal)
 
     gss_release_buffer(&retmin, &srv_token);
 
-    retmaj = gssntlm_wrap(&retmin, cli_ctx, 1, 0, &message, NULL, &cli_token);
+    if (!no_seal) {
+        retmaj = gssntlm_wrap(&retmin, cli_ctx, 1, 0, &message, &conf_state,
+                              &cli_token);
+        if (retmaj != GSS_S_COMPLETE) {
+            print_gss_error("gssntlm_wrap(cli) failed!",
+                            retmaj, retmin);
+            ret = EINVAL;
+            goto done;
+        }
+        if (conf_state != 1) {
+            fprintf(stderr, "Expected confidentiality, but conf_state is 0\n");
+            ret = EINVAL;
+            goto done;
+        }
+
+        retmaj = gssntlm_unwrap(&retmin, srv_ctx,
+                                &cli_token, &srv_token, &conf_state, NULL);
+        if (retmaj != GSS_S_COMPLETE) {
+            print_gss_error("gssntlm_unwrap(srv) failed!",
+                            retmaj, retmin);
+            ret = EINVAL;
+            goto done;
+        }
+        if (conf_state != 1) {
+            fprintf(stderr, "Expected confidentiality, but conf_state is 0\n");
+            ret = EINVAL;
+            goto done;
+        }
+
+        if (memcmp(message.value, srv_token.value, srv_token.length) != 0) {
+            print_gss_error("sealing and unsealing failed to return the "
+                            "same result",
+                            retmaj, retmin);
+            ret = EINVAL;
+            goto done;
+        }
+    }
+
+    /* try again, but sign only */
+    retmaj = gssntlm_wrap(&retmin, cli_ctx, 0, 0, &message, &conf_state,
+                          &cli_token);
     if (retmaj != GSS_S_COMPLETE) {
         print_gss_error("gssntlm_wrap(cli) failed!",
                         retmaj, retmin);
         ret = EINVAL;
         goto done;
     }
+    if (conf_state != 0) {
+        fprintf(stderr, "Expected integrity only, but conf_state is not 0\n");
+        ret = EINVAL;
+        goto done;
+    }
 
     retmaj = gssntlm_unwrap(&retmin, srv_ctx,
-                            &cli_token, &srv_token, NULL, NULL);
+                            &cli_token, &srv_token, &conf_state, NULL);
     if (retmaj != GSS_S_COMPLETE) {
         print_gss_error("gssntlm_unwrap(srv) failed!",
                         retmaj, retmin);
+        ret = EINVAL;
+        goto done;
+    }
+    if (conf_state != 0) {
+        fprintf(stderr, "Expected integrity, but conf_state is not 0\n");
         ret = EINVAL;
         goto done;
     }
