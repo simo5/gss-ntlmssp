@@ -217,7 +217,7 @@ int KXKEY(struct ntlm_ctx *ctx,
         result.data = key_exchange_key->data;
         result.length = key_exchange_key->length;
         ret = HMAC_MD5(&key, &payload, &result);
-    } else if (neg_lm_key) {
+    } else if (neg_lm_key && lm_key->length != 0) {
         payload.data = lm_response->data;
         payload.length = 8;
         key.data = lm_key->data;
@@ -232,7 +232,8 @@ int KXKEY(struct ntlm_ctx *ctx,
         result.data = &key_exchange_key->data[8];
         result.length = 8;
         ret = WEAK_DES(&key, &payload, &result);
-    } else if (non_nt_sess_key) {
+    } else if (non_nt_sess_key && lm_key->length != 0) {
+        if (lm_key->length == 0) return ERR_KEYLEN;
         memcpy(key_exchange_key->data, lm_key, 8);
         memset(&key_exchange_key->data[8], 0, 8);
     } else {

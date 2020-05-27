@@ -159,7 +159,6 @@ uint32_t gssntlm_cli_auth(uint32_t *minor_status,
             uint8_t client_chal[8];
             struct ntlm_buffer cli_chal = { client_chal, 8 };
             struct ntlm_key session_base_key = { .length = 16 };
-            bool NoLMResponseNTLMv1 = !gssntlm_sec_lm_ok(ctx);
             bool ext_sec;
 
             nt_chal_resp.length = 24;
@@ -188,7 +187,8 @@ uint32_t gssntlm_cli_auth(uint32_t *minor_status,
                 goto done;
             }
 
-            if (!ext_sec && NoLMResponseNTLMv1) {
+            if (!ext_sec && (!gssntlm_sec_lm_ok(ctx) ||
+                             cred->cred.user.lm_hash.length == 0)) {
                 memcpy(lm_chal_resp.data, nt_chal_resp.data, 24);
             } else {
                 retmin = ntlm_compute_lm_response(&cred->cred.user.lm_hash,
@@ -347,7 +347,8 @@ uint32_t gssntlm_srv_auth(uint32_t *minor_status,
                                              &cred->cred.user.nt_hash,
                                              ext_sec, ctx->server_chal,
                                              client_chal);
-            if (retmin && gssntlm_sec_lm_ok(ctx)) {
+            if (retmin && gssntlm_sec_lm_ok(ctx) &&
+                (cred->cred.user.lm_hash.length != 0)) {
                 retmin = ntlm_verify_lm_response(lm_chal_resp,
                                                  &cred->cred.user.lm_hash,
                                                  ext_sec, ctx->server_chal,
@@ -375,7 +376,8 @@ uint32_t gssntlm_srv_auth(uint32_t *minor_status,
             retmin = ntlmv2_verify_nt_response(nt_chal_resp,
                                                &ntlmv2_key,
                                                ctx->server_chal);
-            if (retmin && gssntlm_sec_lm_ok(ctx)) {
+            if (retmin && gssntlm_sec_lm_ok(ctx) &&
+                (cred->cred.user.lm_hash.length != 0)) {
                 /* LMv2 Response */
                 retmin = ntlmv2_verify_lm_response(lm_chal_resp,
                                                    &ntlmv2_key,

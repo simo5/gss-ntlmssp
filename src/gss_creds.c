@@ -181,10 +181,16 @@ static int get_user_file_creds(struct gssntlm_name *name,
         ret = NTOWFv1(pwd, &cred->cred.user.nt_hash);
         if (ret) return ret;
 
-        if (gssntlm_sec_lm_ok(ctx)) {
-            cred->cred.user.lm_hash.length = 16;
-            ret = LMOWFv1(pwd, &cred->cred.user.lm_hash);
-            if (ret) return ret;
+        cred->cred.user.lm_hash.length = 16;
+        ret = LMOWFv1(pwd, &cred->cred.user.lm_hash);
+        switch (ret) {
+        case 0:
+            break;
+        case ERANGE:
+            cred->cred.user.lm_hash.length = 0;
+            break;
+        default:
+            return ret;
         }
     }
 
@@ -192,10 +198,8 @@ static int get_user_file_creds(struct gssntlm_name *name,
         ret = hex_to_key(nt, &cred->cred.user.nt_hash);
         if (ret) return ret;
 
-        if (gssntlm_sec_lm_ok(ctx)) {
-            ret = hex_to_key(lm, &cred->cred.user.lm_hash);
-            if (ret) return ret;
-        }
+        ret = hex_to_key(lm, &cred->cred.user.lm_hash);
+        if (ret) return ret;
     }
 
     return 0;
@@ -291,11 +295,18 @@ static int get_creds_from_store(struct gssntlm_name *name,
             ret = NTOWFv1(cred_store->elements[i].value,
                           &cred->cred.user.nt_hash);
 
-            if (gssntlm_get_lm_compatibility_level() < 3) {
-                cred->cred.user.lm_hash.length = 16;
-                ret = LMOWFv1(cred_store->elements[i].value,
-                              &cred->cred.user.lm_hash);
-                if (ret) return ret;
+            cred->cred.user.lm_hash.length = 16;
+            ret = LMOWFv1(cred_store->elements[i].value,
+                          &cred->cred.user.lm_hash);
+            switch (ret) {
+            case 0:
+                break;
+            case ERANGE:
+                cred->cred.user.lm_hash.length = 0;
+                ret = 0;
+                break;
+            default:
+                return ret;
             }
 
             if (ret) return ret;
